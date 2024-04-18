@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Validation samples</title>
+        <script src="../cbx.js"></script>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+        <style>
+            body { background: white; }
+            fieldset { background: #EEEEEE; border-radius: 5px; position:relative; overflow: visible; }
+            .playerCount { width: 4em; }
+
+            .codeToggleLabel { color: green; font-weight: bold; border:1px solid green; padding:3px; border-radius: 5px; position: absolute; right:10px; bottom: 10px; }
+            .codeToggleLabel--sample { display: inline; position: static; }
+            .codeToggle { display: none; }
+            pre { position: absolute; display: none; top: 100%; z-index:10; overflow-x:scroll; border-radius: 5px; border:5px ridge lightgreen; background:white; right: 0; max-width: 100%; }
+            :checked+pre { display: block; }
+            .cbx--error { color: red; border: 1px solid red; padding: 3px; border-radius: 5px; margin: 5px 0; width: auto; display: inline-block; }
+            .summary { color: gray; margin-left: 20px; }
+        </style>
+    </head>
+    <body></body>
+<script>
+let l = (x) => (console.log(x), x);
+let j = ( a ) => a.join( '' );
+let s = ( sel ) => document.querySelector( sel );
+
+let extendedConstraints = {
+    captcha: ( [ sum, ...els], ref ) => [ +sum.value != ( els.reduce( ( acc, el ) => acc + ( +el.value ), +ref ) ), sum.value ],
+};
+
+function ras2( html ){
+    let id = crypto.randomUUID().replace(/[0-9-]/g, "");
+    return `
+<fieldset>
+    ${ html }
+    <label class="codeToggleLabel" for="${ id }_toggle">&#x1F441; &lt;/&gt;</label>
+    <input type="checkbox" class="codeToggle" id="${ id }_toggle">
+    <pre><code class="language-html">${ Object.assign( document.createElement( "textarea" ), { textContent: html.trim() } ).innerHTML }</code></pre>
+</fieldset>
+    `;
+}
+let m = ( sel, constraint, param, message, errorOrClass = true, triggers ) => ` \
+class="cbx ${ errorOrClass === true ? "cbx--error" : errorOrClass }" \
+data-selectors="${ sel }" \
+data-constraint="${ constraint }" \
+${ param !== null ? `data-param="${ param }" ` : "" } \
+${ message && `data-message="${ message }"` } \
+${ triggers && `data-triggers="${ triggers }"` } \
+`;
+
+document.body.innerHTML = `
+<form method="POST" id="f">
+    <h1> Submit a board game </h1>
+
+${ j( [
+
+`<legend> <span class="summary"> CBX examples description </span> </legend>
+<div class="summary" >
+    This is mock form to give some examples of <a href="https://github.com/morphles/cbx">CBX</a> library use. Use 
+    <label class="codeToggleLabel codeToggleLabel--sample">&#x1F441; &lt;/&gt;</label>
+    to show code of given section. <br>
+    Not almost all interactivity is provided by CBX, without any additional JS, apart from small function to add custom categories, and "mocked submit handler".<br>
+    There is also one custom constraint implemented "for" extremely fake captcha, just to show how custom constraints can be used with CBX.
+</div>`, 
+
+`<legend> Title <span class="summary">shows use as counter &amp; text length validation</span></legend>
+<div> <input type="text" name="title" id="title" /> </div>
+<div>
+    <div>
+        Characters:
+        <span${ m( "#title", "maxTextLength", -1, "%value%", "cbx--initial cbx--insta" ) }></span>
+    </div>
+    <div${ m( "#title", "minTextLength", 2, "Please, at least 2 chars!" ) }></div>
+    <div${ m( "#title", "maxTextLength", 200, "Title should be less than 200 chars!" ) }></div>
+</div>`, 
+
+`<legend>
+    Description (
+        <label> <input type="radio" name="descType" value="text" checked />text </label>
+        or
+        <label> <input type="radio" name="descType" value="upload" />upload </label>
+    ) <span class="summary">shows nesting for &quot;&amp;&amp;&quot; of multiple rules, custom triggering</span>
+</legend>
+<div${ m( "[name=descType][value=text]", "eqSet", 0, "", "cbx--initial" ) }>
+    <textarea rows="10" style="width: 90%;" name="description" id="description"></textarea>
+</div>
+<div${ m( "[name=descType][value=upload]", "eqSet", 0, "", "cbx--initial" ) }>
+    <input type="file" name="descriptionUpload" id="descriptionUpload" />
+</div>
+<div>
+    <div${ m( "[name=descType][value=text]", "eqSet", 0, "", "", "#description" ) }>
+        <div${ m( "#description", "minTextLength", 200, "Please enter at least 200 characters!" ) }></div>
+    </div>
+    <div${ m( "[name=descType][value=upload]", "eqSet", 0, "", "", "#descriptionUpload" ) }>
+        <div${ m( "#descriptionUpload", "maxEmpty", 0, "Please upload a file!" ) }></div>
+    </div>
+</div>`,
+
+`<legend>
+    Number of players
+    <span class="summary">shows nesting, counting empty fields, comparing values</span>
+</legend>
+<div>
+    <input type="number" name="minPlayers" id="minPlayers" class="playerCount" /> -
+    <input type="number" name="maxPlayers" id="maxPlayers" class="playerCount" />
+</div>
+<div>
+    <div${ m( "#minPlayers;#maxPlayers", "minEmpty", "1", "", "" ) }>
+        <div${ m( "#minPlayers;#maxPlayers", "minNumber", null, "Minimum players must be less than maximum!" ) }></div>
+    </div>
+    <div${ m( "#minPlayers;#maxPlayers", "maxEmpty", "1", "Please provide at least some information about min or max players!" ) }></div>
+</div>`,
+
+`<legend>Release year <span class="summary">shows regex and number comparision constraints</span></legend>
+<div> <input type="text" id="year" name="year" /> </div>
+<div>
+    <div${ m( "#year", "regex", "^-?\\d{1,4}$", "Please provide year in four digit format, possibly with negation for ancient games." ) }></div>
+    <div${ m( "#year", "minNumber", (new Date()).getFullYear() + 4, "Release dates &gt;3 years in future can't be taken serioustly." ) }></div>
+</div>`,
+
+`<legend>
+    Categories <span${ m( "[name=category]", "eqSet", -1, "(%value% selected)", "cbx--initial" ) }></span>
+    <span class="summary">shows counting checkboxes, working on dynamically added elements</span>
+</legend>
+<div id="catBoxes">
+${ j( [ "Abstract Strategy", "Card Game", "Civilization", "Dice", "Fantasy", "Economic", "Negotiation" ].map(
+    (c, id) => `    <label> <input type="checkbox" name="category" value="${ c }" id="cat${ id }" /> ${ c } </label> <br/>\n`
+) ) }
+</div>
+<div>
+    <!--
+    let s = ( sel ) => document.querySelector( sel );
+    s( "#addCategory" ).addEventListener( "click", e => s( "#catBoxes" ).append(
+        Object.assign(
+            document.createElement( "label" ),
+            { innerHTML: ${ `<input type="checkbox" name="category" value="\${ s( "#customCategory" ).value }" /> \${ s( "#customCategory" ).value } ` } }
+        ),
+        document.createElement( "br" )
+    ) );
+    -->
+    <input type="text" id="customCategory"><button id="addCategory" type="button">Add Custom</button>
+    <div${ m( "[name=category]", "minSet", 1, "Please, select at least one category!" ) }></div>
+</div>`,
+
+`<legend>
+    Mechanics <span${ m( "[name=mechanics]", "eqSet", -1, "(%value% selected)", "cbx--initial" ) }></span>
+    <span class="summary">shows counting options</span>
+</legend>
+<div>
+    <select multiple name="mechanics">
+${ j( [ "Action Points", "Area Control", "Cooperative", "Deck Building", "Engine Building", "Trick Taking", "Variable Powers", "Worker Placement" ].map(
+    ( m, id ) => `        <option value="${ id }">${ m }</option>\n`
+) ) }
+    </select>
+</div>
+<div>
+    <div${ m( "[name=mechanics]", "minSet", 1, "Please, select at least one mechanic!" ) }></div>
+</div>`,
+
+`<legend>Contact <span class="summary">shows maxValue constraint working with dates as .value is ISO format date</span></legend>
+<div>
+    When can we contact you about this entry?<br>
+    <input type="date" name="contactDate" />
+</div>
+<div>
+    <div${ m( "[name=contactDate]", "maxValue", (new Date()).toISOString().substring( 0, 10 ), "Contact date must be in future!" ) }></div>
+</div>`,
+
+`<legend>Silly I'm not bot check <span class="summary">shows custom rule, custom triggering</span></legend>
+<div>
+    Min + Max players + 3 = <input type="text" name="captcha" />
+</div>
+<div>
+    <!--
+        let extendedConstraints = {
+            captcha: ( [ sum, ...els], ref ) => [ +sum.value != ( els.reduce( ( acc, el ) => acc + ( +el.value ), +ref ) ), sum.value ],
+        };
+    -->
+    <div${ m( "[name=captcha];#minPlayers,#maxPlayers", "captcha", 3, "Failure!", true, "[name=captcha]" ) }></div>
+</div>`,
+
+`<legend>Save <span class="summary">shows validate all on submit, prevent submit if invalid</span></legend>
+<div><input type="submit" value="Submit"></div>`,
+
+].map( ras2 ) ) }
+
+</form>
+`;
+cbx( extendedConstraints );
+setTimeout(
+    () => {
+        hljs.highlightAll();
+        s( "form" ).addEventListener( "submit", e => { e.preventDefault(); alert( "Submit Succeeded" ); } );
+        s( "#addCategory" ).addEventListener( "click", () => s( "#catBoxes" ).append(
+            Object.assign(
+                document.createElement( "label" ),
+                { innerHTML: `<input type="checkbox" name="category" value="${ s( "#customCategory" ).value }" /> ${ s( "#customCategory" ).value } ` }
+            ),
+            document.createElement( "br" )
+        ) );
+    },
+    200
+);
+</script>
+</html>
