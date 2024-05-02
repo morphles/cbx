@@ -1,13 +1,50 @@
 function cbx( customConstraints = {}, debounceTime = 10 ){
-    const cPrfx = 'cbx';
-    function findNodes( selector, root ){
-        return [ ...( root || document ).querySelectorAll( selector ) ];
-    }
-    function b( f, ...args ) {
-        return f.bind( null, ...args );
-    }
+    const cPrfx = 'cbx',
+        /**
+         * @param {string} selector
+         * @param {HTMLElement|null} root
+         * @returns {HTMLElement[]}
+         */
+        findNodes = ( selector, root ) => [ ...( root || document ).querySelectorAll( selector ) ],
+        /**
+         * Shorthand for bind.
+         * @param {Function} f
+         * @param {...*} args
+         * @returns {Function}
+         */
+        b = ( f, ...args ) => f.bind( null, ...args ),
+        /**
+         * "Converting" comparision operators ("<", ">", "!=") to functions.
+         * @param {string} op
+         * @returns {Function}
+         */
+        o = ( op ) => {
+            switch( op ) {
+                case "<": return ( a, b ) => a < b;
+                case ">": return ( a, b ) => a > b;
+                case "!=": return ( a, b ) => a != b;
+            }
+        },
+        /**
+         * Given "cbx" find top most ancestor that is also cbx, or just original el if none found.
+         * @param {HTMLElement}
+         * @returns {HTMLElement}
+         */
+        top = ( el ) => el && top( el.parentNode.closest( `.${ cPrfx }` ) ) || el,
 
-    //constraints are functions taking 2 arguments, node list on which check will be performed, reference value
+        /**
+         * Find all cbx related to field. Ether directly targeted by cbx selector or "in hierarchy" with it -
+         * meaning is/has common cbx ancestor.
+         * @param {HTMLElement} field
+         */
+        findDependants = ( field ) =>
+            findNodes( `.${ cPrfx }` )
+                .filter( cbx => field.matches( ( cbx.dataset.triggers || cbx.dataset.selectors ).replace( ";", "," ) ) )
+                .flatMap( cbx => ( topCbx => findNodes( `.${ cPrfx }`, topCbx ).concat( topCbx ) )( top( cbx ) ) )
+            ;
+    ;
+    
+    //constraints are functions taking 2 arguments: array of nodes on which check will be performed and "reference value"
     //(elements, reference) => [<if constraint violated>, <violation>]; Returning violation for use in messages
     const constraints = Object.fromEntries( [].concat(
         [ [ "regex", ( els, ref ) => ( el => [ !!el, el?.value ] )( els.find( el => !el.value.match( new RegExp( ref ) ) ) ) ], ],
@@ -17,7 +54,7 @@ function cbx( customConstraints = {}, debounceTime = 10 ){
                 ( op, els, ref ) => ( cnt => [ op( cnt, +ref ), cnt ] )(
                     [].filter.call(
                         els[ 0 ]?.options || els, 
-                        function isSet( { value, checked, selected } ) { return value && ( checked || selected ); }
+                        ( { value, checked, selected } ) => value && ( checked || selected )
                     ).length
                 )
             ],
@@ -44,19 +81,12 @@ function cbx( customConstraints = {}, debounceTime = 10 ){
         ] ),
     ) );
 
-    function o( op ) { // cause why not have operators be something special eh? Who needs functions....
-        switch( op ) {
-            case "<": return ( a, b ) => a < b;
-            case ">": return ( a, b ) => a > b;
-            case "!=": return ( a, b ) => a != b;
-        }
-    }
 
     /** 
      * Check cbx constraint against targeted field(s), makes cbx visible if constraint fails, setting its html to configured message.
      * @param {Event} ev - triggering event
-     * @param {Element} cbx - cbx for which to check constraint
-     * @returns {Element} cbx
+     * @param {HTMLElement} cbx - cbx for which to check constraint
+     * @returns {HTMLElement} cbx
      */
     function check( ev, cbx ){
         const { selectors, constraint, param, message } = cbx.dataset;
@@ -75,26 +105,11 @@ function cbx( customConstraints = {}, debounceTime = 10 ){
         return cbx;
     }
 
-    function top( el ){ // given cbx find top most ancestor that is also cbx, or just original el if none found.
-        return el && top( el.parentNode.closest( `.${ cPrfx }` ) ) || el;
-    }
-
-    /**
-     * Find all cbx related to field. Ether directly targeted by cbx selector or "in hierarchy" with it -
-     * meaning is/has common cbx ancestor.
-     * @param {HTMLElement} field
-     */
-    function findDependants( field ){
-        return findNodes( `.${ cPrfx }` )
-            .filter( cbx => field.matches( ( cbx.dataset.triggers || cbx.dataset.selectors ).replace( ";", "," ) ) )
-            .flatMap( cbx => ( topCbx => findNodes( `.${ cPrfx }`, topCbx ).concat( topCbx ) )( top( cbx ) ) )
-        ;
-    }
 
     let lastTarget, tOut;
     /**
-     * Listenend on input/change, checks all constraint boxes targeting the field @see findDependants .
-     * Special radio handling, since changing one changes another, so we need to check other radios with same name too.
+     * Listenend on input/change, checks all constraint boxes targeting the field @see findDependants() .
+     * Special radio handling - since changing one changes another, so we need to check other radios with same name too.
      * We have a debounce built in, since we listen for both change and input, and for say checkboxes/radios they both fire on click
      * this helps to not "double validate".
      * @param {Event} ev 
@@ -117,9 +132,10 @@ function cbx( customConstraints = {}, debounceTime = 10 ){
     };
 
     /**
-     * Listener for form submission or button with 'data-click-validates="<field targeting selector>"'.
+     * Listener for form submission or button with 'data-click-validates="<fields targeting selector>"'.
      * Validate all/targeted fields, prevent submission/propagation if have visible error cbx, scroll to top most.
      * @param {Event} ev
+     * @param {HTMLElement[]} fields
      */
     function stopOnBrokenConstraints( ev, fields ){
         const visibleErrorTops =
@@ -146,6 +162,6 @@ function cbx( customConstraints = {}, debounceTime = 10 ){
 
     findNodes( `.${ cPrfx }--initial` ).map( b( check, {} ) ); //some (mainly counter-likes), shoul be visible from start
     ( new CSSStyleSheet() )
-        .replace( `.${ cPrfx }:not( .${ cPrfx }--visible ) { display: none !important; }` )
+        .replace( `.${ cPrfx }:not(.${ cPrfx }--visible){display:none !important;}` )
         .then( sheet => document.adoptedStyleSheets.push( sheet ) );
 };
